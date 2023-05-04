@@ -107,21 +107,32 @@ vector<Job> completedJobs; //once a job is finished, put it here
 int event_ids = 0;
     
 int CURRENT_TIME = 0;
-int STOP_TIME = 50; // when sim hits this, it stop
+int STOP_TIME = 250; // when sim hits this, it stop
+int numJobs = 250; //10, 50, 100, 250
 
 int rr1 = 10;
 int rr2 = 20;
 
 CPU P1 = CPU(1); 
 CPU P2 = CPU(2);
-// CPU P3 = CPU(3);
-vector<CPU> Processors = {P1, P2};
+CPU P3 = CPU(3);
+CPU P4 = CPU(4);
+CPU P5 = CPU(5); 
+CPU P6 = CPU(6);
+CPU P7 = CPU(7);
+CPU P8 = CPU(8);
+
+vector<CPU> Processors = {P1, P2, P3, P4, P5, P6, P7, P8};
+//vector<CPU> Processors = {P1, P2, P3, P4};
+//vector<CPU> Processors = {P1, P2};
+//vector<CPU> Processors = {P1};
+
 
 
 //// PROGRAM START /////////////////////////////////////////////////
 int main() {
     srand(time(NULL));
-    createJobs(10);
+    createJobs(numJobs);
     queue<Job> roundRobin1 = {};
     queue<Job> roundRobin2 = {};
     queue<Job> FCFS = {};
@@ -169,6 +180,24 @@ int main() {
             }
         }
     }
+    float tat_time = 0;
+    float resp_time = 0;
+    float wait_time = 0;
+    for(CPU c: Processors){
+        tat_time += c.avg_tat;
+        resp_time += c.avg_resp;
+        wait_time += c.avg_wait;
+    }
+    tat_time = tat_time/Processors.size();
+    resp_time = resp_time/Processors.size();
+    wait_time = wait_time/Processors.size();
+    fstream fout;
+    fout.open("processors.csv", ios::out | ios::app);
+    ifstream read ("processors.csv");
+    if(read.peek() == EOF){ //On initial writing to file, we need to add the labels for columns
+        fout << "# Processors" << ", " << "# Jobs" << ", " << "Avg. Turnaround Time" << ", " << "Avg. Response Time" << ", " << "Avg. Wait Time" << endl;
+    }
+    fout << Processors.size() << ", " << numJobs << ", " << tat_time << ", " << resp_time << ", " << wait_time << endl;
 }
 //// PROGRAM END ///////////////////////////////////////////////////
 
@@ -186,15 +215,13 @@ void createJobs(int numJobs) {
 void write_statistics(int* data, string fileName) {
     fstream fout;
     fout.open((fileName + ".csv"), ios::out | ios::app);
+
     ifstream read (fileName + ".csv");
     if(read.peek() == EOF){ //On initial writing to file, we need to add the labels for columns
     fout << "Job ID" << ", " << "Arrival Time" << ", " << "Wait Time" << ", " << "Run Time" << ", " << "Response Time" << "\n";
-
     }
 
     fout << data[0] << ", " << data[1] << ", " << data[2] << ", " << data[3] << ", " << data[4] << "\n";
-
-
 }
 
 // Give it a job (pointer), 
@@ -284,6 +311,9 @@ void departureEvent(Event &nowEvent) {
         if(nextJob.response_time == -1) {
             nextJob.response_time = CURRENT_TIME - nextJob.arrival_time;
         } // calculates and sets response_time
+        Processors[nowEvent.processor].updateWaitTime(nextJob);
+        Processors[nowEvent.processor].updateResponseTime(nextJob);
+        Processors[nowEvent.processor].updateTurnaroundTime(nextJob);
         nextJob.wait_time += CURRENT_TIME - nextJob.arrival_time;
         FEL.push_back(Event(nextJob, event_ids, departure, CURRENT_TIME + switch_time, nowEvent.processor));
         event_ids++;
@@ -292,6 +322,8 @@ void departureEvent(Event &nowEvent) {
     else if( readyQueue[1].empty() == false) { // rr20 queue
         nextJob = readyQueue[1].front();
         nextJob.wait_time += CURRENT_TIME - nextJob.arrival_time;
+        Processors[nowEvent.processor].updateWaitTime(nextJob);
+        Processors[nowEvent.processor].updateTurnaroundTime(nextJob);
         readyQueue[1].pop();
         FEL.push_back(Event(nextJob, event_ids, departure, CURRENT_TIME + switch_time, nowEvent.processor));
         event_ids++;
@@ -302,20 +334,22 @@ void departureEvent(Event &nowEvent) {
         nextJob = readyQueue[2].front();
         readyQueue[2].pop();
         nextJob.wait_time += CURRENT_TIME - nextJob.arrival_time;
+        Processors[nowEvent.processor].updateWaitTime(nextJob);
+        Processors[nowEvent.processor].updateTurnaroundTime(nextJob);
         FEL.push_back(Event(nextJob, event_ids, departure, CURRENT_TIME + switch_time, nowEvent.processor));
         event_ids++;
         cout << "Time: " << CURRENT_TIME  << " : Scheduled Departure on fcfs departure()" << endl;
 
     }
     else {
-        Processors[nowEvent.processor].available = 0;
+        Processors[nowEvent.processor].available = true;
     }
     int timeQuantum = getTime(nowEvent.job.age);
     int checkCompletion = nowEvent.job.run_time - timeQuantum;
     
     if(checkCompletion <= 0) {//current job is completed
         int data[5] = {nowEvent.job.job_id, nowEvent.job.arrival_time, nowEvent.job.wait_time , nowEvent.job.run_time, nowEvent.job.response_time};
-        write_statistics(data, "data");
+        write_statistics(data, (to_string(numJobs) + "_jobs_and_" + to_string(Processors.size()) + "processors"));
         cout << nowEvent.job.arrival_time << nowEvent.job.job_id << nowEvent.job.response_time << nowEvent.job.wait_time << endl;
     }
     else if(checkCompletion > 0) { // quantum timeout
